@@ -1,4 +1,4 @@
-package com.myname.mymodid;
+package com.redderpears.bmmeteorauto;
 
 public class ClientProxy extends CommonProxy {
 
