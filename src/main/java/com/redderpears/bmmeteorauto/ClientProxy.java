@@ -1,5 +1,6 @@
 package com.redderpears.bmmeteorauto;
 
+import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import kubatech.api.utils.ModUtils;
 
@@ -15,5 +16,10 @@ public class ClientProxy extends CommonProxy {
     public void preInit(FMLPreInitializationEvent event) {
         ModUtils.isClientSided = true;
         super.preInit(event);
+    }
+
+    public void init(FMLInitializationEvent event) {
+        ModUtils.isClientSided = true;
+        super.init(event);
     }
 }

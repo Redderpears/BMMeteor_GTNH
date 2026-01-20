@@ -18,6 +18,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 
 import com.gtnewhorizon.structurelib.alignment.constructable.ISurvivalConstructable;
 import com.gtnewhorizon.structurelib.structure.IStructureDefinition;
+import com.gtnewhorizon.structurelib.structure.ISurvivalBuildEnvironment;
 import com.gtnewhorizon.structurelib.structure.StructureDefinition;
 import com.redderpears.bmmeteorauto.api.implementations.AbstractGTMultiblockBase;
 
@@ -49,10 +50,10 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet>
             STRUCTURE_PIECE_MAIN,
             transpose(
                 new String[][] { // spotless:off
-            {"b~b"},
-            {"bsb"},
-            {"sss"}
-        })) //spotless:on
+                    {"b~b"},
+                    {"bsb"},
+                    {"sss"},
+                })) //spotless:on
         .addElement('s', onElementPass(t -> t.mCasing++, ofBlock(GregTechAPI.sBlockCasings2, 0)))
         .addElement(
             'b',
@@ -70,13 +71,14 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet>
     @Override
     protected MultiblockTooltipBuilder createTooltip() {
         MultiblockTooltipBuilder tt = new MultiblockTooltipBuilder();
-        tt.addInfo("balls");
+        tt.addInfo("balls")
+            .toolTipFinisher("yo");
         return tt;
     }
 
     @Override
     public boolean checkMachine(IGregTechTileEntity aBaseMetaTileEntity, ItemStack aStack) {
-        if (!checkPiece(STRUCTURE_PIECE_MAIN, 2, 6, 0)) return false;
+        if (!checkPiece(STRUCTURE_PIECE_MAIN, 1, 0, 0)) return false;
         return true;
     }
 
@@ -88,7 +90,6 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet>
     @Override
     public ITexture[] getTexture(IGregTechTileEntity aBaseMetaTileEntity, ForgeDirection side, ForgeDirection facing,
         int colorIndex, boolean aActive, boolean aRedstone) {
-        final int CASING_INDEX = 16;
         if (side == facing) {
             if (aActive) return new ITexture[] { Textures.BlockIcons.getCasingTextureForId(CASING_INDEX),
                 TextureFactory.builder()
@@ -115,7 +116,12 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet>
 
     @Override
     public void construct(ItemStack itemStack, boolean b) {
-        buildPiece(STRUCTURE_PIECE_MAIN, itemStack, b, 2, 6, 0);
+        buildPiece(STRUCTURE_PIECE_MAIN, itemStack, b, 1, 0, 0);
+    }
+
+    @Override
+    public int survivalConstruct(ItemStack stackSize, int elementBudget, ISurvivalBuildEnvironment env) {
+        return survivalBuildPiece(STRUCTURE_PIECE_MAIN, stackSize, 1, 0, 0, elementBudget, env, true, true);
     }
 
     @SideOnly(Side.CLIENT)
