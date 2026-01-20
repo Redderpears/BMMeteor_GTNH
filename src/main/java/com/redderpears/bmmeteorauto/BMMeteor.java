@@ -10,7 +10,12 @@ import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.event.FMLServerStartingEvent;
 
-@Mod(modid = BMMeteor.MODID, version = Tags.VERSION, name = "BMMeteor", acceptedMinecraftVersions = "[1.7.10]")
+@Mod(
+    modid = BMMeteor.MODID,
+    version = Tags.VERSION,
+    name = "BMMeteor",
+    acceptedMinecraftVersions = "[1.7.10]",
+    dependencies = "required-after: gregtech; " + "after:AWWayofTime")
 public class BMMeteor {
 
     public static final String MODID = "bmmeteorauto";
