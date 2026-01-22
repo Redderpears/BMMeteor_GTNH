@@ -355,6 +355,17 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
             || !SoulNetworkHandler.canSyphonFromOnlyNetwork(meteorRitual.getOwner(), meteor.cost));
     }
 
+    private boolean tryToSyphon(String user, int amount) {
+        if (SoulNetworkHandler.canSyphonFromOnlyNetwork(user, amount)) {
+            SoulNetworkHandler.syphonFromNetwork(user, amount);
+            return true;
+        } else return false;
+    }
+
+    private boolean canSyphon(String user, int amount) {
+        return SoulNetworkHandler.canSyphonFromOnlyNetwork(user, amount);
+    }
+
     /************************************************************************************************************************************************************************************************
      *
      * FAKE METEORS
@@ -368,8 +379,8 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
     private void summonFakeMeteor() { // TODO: MAKE THIS TOGGLABLE
         if (fakeMeteor != null && !fakeMeteor.isDead) return;
         if (100000 < SoulNetworkHandler.getCurrentEssence(meteorRitual.getOwner())) {
-            SoulNetworkHandler.syphonFromNetwork(meteorRitual.getOwner(), 100000); // drains 100k to spawn fake meteor
-                                                                                   // because it's funny
+            if (!tryToSyphon(meteorRitual.getOwner(), 100000)) return; // drains 100k to spawn fake meteor
+                                                                       // because it's funny
             fakeMeteor = new EntityFakeMeteor(
                 getWorld(),
                 meteorRitual.getXCoord() + CENTRAL_METEOR_POS[0],
@@ -462,11 +473,11 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
         List<ItemStack> recipeOutput = new ArrayList<>();
 
         // PICKAXE-SPECIFIC RULES:
+        int miningLPCost = 0;
         if (pickaxe.getItem() instanceof BoundPickaxe) { // TODO: this should probably be consolidated into a helper
                                                          // class!
             final int rightClickCount = totalBlockCount / BP_RIGHT_CLICK_VOLUME + 1;
-            int lpCost = rightClickCount * 10000; // calculated right click count based on volume
-            SoulNetworkHandler.syphonFromNetwork(meteorRitual.getOwner(), lpCost);
+            miningLPCost = rightClickCount * 10000; // calculated right click count based on volume
             recipeTime = rightClickCount * BP_RIGHT_CLICK_DELAY + BP_METEOR_DELAY;
         } else if (pickaxe.getItem() instanceof ItemPickaxeInfinity) {
             final int rightClickCount = totalBlockCount / AV_RIGHT_CLICK_VOLUME + 1;
@@ -474,6 +485,8 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
         } else { // TODO: ADD MORE PICKAXES
             recipeTime = totalBlockCount * 10 + AV_METEOR_DELAY;
         }
+
+        if (!tryToSyphon(meteorRitual.getOwner(), meteorCost + miningLPCost + 100000)) return false;
 
         // silk touch technically, oh well.
         int oreWeight = MeteorComponent.getTotalListWeight(ores);
@@ -504,8 +517,8 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
         BMMeteor.LOG.info("filler weight: " + fillerWeight);
         BMMeteor.LOG.info("recipeOutput size (stacks): " + oreWeight);
 
-        SoulNetworkHandler.syphonFromNetwork(meteorRitual.getOwner(), meteorCost + 100000); // drains extra 100k for
-                                                                                            // ritual cost
+        // drains extra 100k for
+        // ritual cost
         focus.stackSize--;
         if (focus.stackSize <= 0) findFocus();
 
