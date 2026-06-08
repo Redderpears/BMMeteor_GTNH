@@ -9,7 +9,10 @@ import static gregtech.api.enums.HatchElement.Energy;
 import static gregtech.api.enums.HatchElement.InputBus;
 import static gregtech.api.enums.HatchElement.Maintenance;
 import static gregtech.api.enums.HatchElement.OutputBus;
-import static gregtech.api.enums.Textures.BlockIcons.*;
+import static gregtech.api.enums.Textures.BlockIcons.OVERLAY_FRONT_DISTILLATION_TOWER;
+import static gregtech.api.enums.Textures.BlockIcons.OVERLAY_FRONT_DISTILLATION_TOWER_ACTIVE;
+import static gregtech.api.enums.Textures.BlockIcons.OVERLAY_FRONT_DISTILLATION_TOWER_ACTIVE_GLOW;
+import static gregtech.api.enums.Textures.BlockIcons.OVERLAY_FRONT_DISTILLATION_TOWER_GLOW;
 import static gregtech.api.util.GTStructureUtility.buildHatchAdder;
 
 import java.util.ArrayList;
@@ -19,6 +22,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.item.ItemPickaxe;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
@@ -60,6 +64,7 @@ import gregtech.api.recipe.check.CheckRecipeResult;
 import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.api.render.TextureFactory;
 import gregtech.api.util.GTOreDictUnificator;
+import gregtech.api.util.GTUtility;
 import gregtech.api.util.MultiblockTooltipBuilder;
 
 public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> implements ISurvivalConstructable {
@@ -87,7 +92,7 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
             'b',
             buildHatchAdder(MTEMeteorNet.class).atLeast(InputBus, OutputBus, Energy, Maintenance)
                 .casingIndex(CASING_INDEX)
-                .dot(1)
+                .hint(1)
                 .buildAndChain(onElementPass(t -> t.mCasing++, ofBlock(GregTechAPI.sBlockCasings2, 0))))
         .build();
 
@@ -311,13 +316,35 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
 
     private TEMasterStone meteorRitual;
 
+    @Nullable
+    protected TileEntity getTileEntityAtRelativePosition(int @NotNull [] relativePos) {
+        if (relativePos.length < 3) return null;
+        int[] relativeCoords = new int[] { 0, 0, 0 };
+        this.getExtendedFacing()
+            .getWorldOffset(relativePos, relativeCoords);
+
+        @Nullable
+        ChunkCoordinates worldCoords = this.getBaseMetaTileEntity()
+            .getCoords();
+
+        if (worldCoords == null) return null;
+        try {
+            return this.getBaseMetaTileEntity()
+                .getTileEntity(
+                    worldCoords.posX + relativeCoords[0],
+                    worldCoords.posY + relativeCoords[1],
+                    worldCoords.posZ + relativeCoords[2]);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private boolean findFallingMeteorRitual() {
         final int[][] VALID_RITUAL_POSES = { { 0, -1, 0 } }; // {to the right of the controller, above the controller,
                                                              // behind the controller}
         for (int[] pose : VALID_RITUAL_POSES) {
             TileEntity te = getTileEntityAtRelativePosition(pose);
             if (isFallingTowerRitual(te)) {
-                BMMeteor.LOG.info("Found Ritual!");
                 meteorRitual = (TEMasterStone) te;
                 return true;
             }
@@ -397,6 +424,7 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
     private void summonAuxiliaryMeteors() { // TODO: MAKE THESE CONSISTENTLY SMALL OR REMOVE THEM
                                             // TODO: MAKE THIS TOGGLABLE
         if (getBaseMetaTileEntity().isClientSide()) return;
+        if (meteorRitual == null) return;
         final int radius = getWorld().rand.nextInt(200) + 150;
         final double speed = radius / 200.0;
         final double theta = getWorld().rand.nextFloat() * Math.PI * 2;
@@ -428,14 +456,19 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
 
     private static final int BP_RIGHT_CLICK_VOLUME = 11 * 11 * 12; // TODO: MAKE CONFIGS FOR THESE
     private static final int AV_RIGHT_CLICK_VOLUME = 16 * 16 * 9;
+    private static final double RIGHT_CLICK_GRANULARITY_MODIFIER = 3;
     private static final int BP_RIGHT_CLICK_DELAY = 12 * 16;
     private static final int AV_RIGHT_CLICK_DELAY = 6 * 16;
     private static final int BP_METEOR_DELAY = 20 * 20;
     private static final int AV_METEOR_DELAY = 5 * 20;
     private static final double METEOR_BLOCK_COUNT_MULTIPLIER = 0.4; // TODO: MAKE BOOSTABLE?
+    // TODO: PUT THIS IN A CLASS!
 
     // makes the meteor 1/x times faster and with x times as many outputs, equal throughput and faster recipe times.
-    private static final double METEOR_SPEED_SCALING_FACTOR = 0.5; // TODO: MAKE CUSTOMIZABLE TO THE USER
+    // makes focuses give METEOR_BLOCK_COUNT_MULTIPLIER * METEOR_SPEED_SCALING_FACTOR as many drops per meteor
+    private static final double METEOR_SPEED_SCALING_FACTOR = 0.8; // TODO: MAKE CUSTOMIZABLE TO THE USER
+    // direct nerf on meteor speed
+    private static final double METEOR_RECIPE_TIME_NERF = 5;
 
     private boolean runRitual() {
         Meteor meteor = meteorList.get(MeteorRegistry.getMeteorIDForItem(focus));
@@ -476,26 +509,40 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
         int miningLPCost = 0;
         if (pickaxe.getItem() instanceof BoundPickaxe) { // TODO: this should probably be consolidated into a helper
                                                          // class!
-            final int rightClickCount = totalBlockCount / BP_RIGHT_CLICK_VOLUME + 1;
-            miningLPCost = rightClickCount * 10000; // calculated right click count based on volume
-            recipeTime = rightClickCount * BP_RIGHT_CLICK_DELAY + BP_METEOR_DELAY;
+            final int rightClickCount = (int) ((totalBlockCount / BP_RIGHT_CLICK_VOLUME + 1)
+                * RIGHT_CLICK_GRANULARITY_MODIFIER);
+            miningLPCost = (int) (rightClickCount * 10000 / RIGHT_CLICK_GRANULARITY_MODIFIER); // calculated right click
+                                                                                               // count based on volume
+            recipeTime = (int) (rightClickCount * BP_RIGHT_CLICK_DELAY / RIGHT_CLICK_GRANULARITY_MODIFIER)
+                + BP_METEOR_DELAY;
         } else if (pickaxe.getItem() instanceof ItemPickaxeInfinity) {
-            final int rightClickCount = totalBlockCount / AV_RIGHT_CLICK_VOLUME + 1;
-            recipeTime = rightClickCount * AV_RIGHT_CLICK_DELAY;
+            final int rightClickCount = (int) ((totalBlockCount / AV_RIGHT_CLICK_VOLUME + 1)
+                * RIGHT_CLICK_GRANULARITY_MODIFIER);
+            recipeTime = (int) (rightClickCount * AV_RIGHT_CLICK_DELAY / RIGHT_CLICK_GRANULARITY_MODIFIER);
         } else { // TODO: ADD MORE PICKAXES
             recipeTime = totalBlockCount * 10 + AV_METEOR_DELAY;
         }
 
         if (!tryToSyphon(meteorRitual.getOwner(), meteorCost + miningLPCost + 100000)) return false;
 
-        // silk touch technically, oh well.
+        this.mMaxProgresstime = (int) (recipeTime * METEOR_SPEED_SCALING_FACTOR * METEOR_RECIPE_TIME_NERF); // TODO:
+                                                                                                            // LAMBDAIZE
+                                                                                                            // THIS
+
+        double efficiency_buff = calculateOverclocks();
+
+        // drains extra 100k for
+
+        // silk touch technically, oh well. TODO: fix this
         int oreWeight = MeteorComponent.getTotalListWeight(ores);
         int fillerWeight = MeteorComponent.getTotalListWeight(filler);
 
+        // counts through ores and fillers and adjusts them to meteor Nerf
         for (MeteorComponent ore : ores) {
             double oreCount = ((ore.getWeight() * (100 - fillerChance) * totalBlockCount / 100.0 / oreWeight)
                 * METEOR_BLOCK_COUNT_MULTIPLIER
-                * METEOR_SPEED_SCALING_FACTOR);
+                * METEOR_SPEED_SCALING_FACTOR
+                * efficiency_buff);
             int finalOreCount = (int) oreCount;
             finalOreCount += (getWorld().rand.nextFloat() < oreCount % 1d ? 1 : 0); // TODO: LAMBDAIZE THIS, MAYBE VIA
                                                                                     // CONFIG?
@@ -506,7 +553,8 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
         for (MeteorComponent fil : filler) {
             double fillerCount = (int) ((fil.getWeight() * (fillerChance) * totalBlockCount / 100.0 / fillerWeight)
                 * METEOR_BLOCK_COUNT_MULTIPLIER
-                * METEOR_SPEED_SCALING_FACTOR);
+                * METEOR_SPEED_SCALING_FACTOR
+                * efficiency_buff);
             int finalFillerCount = (int) fillerCount;
             finalFillerCount += (getWorld().rand.nextFloat() < fillerCount % 1d ? 1 : 0); // TODO: LAMBDAIZE THIS, MAYBE
                                                                                           // VIA CONFIG?
@@ -514,25 +562,61 @@ public class MTEMeteorNet extends AbstractGTMultiblockBase<MTEMeteorNet> impleme
             recipeOutput.add(fil.getBlock());
         }
 
+        // logs for sanity
         BMMeteor.LOG.info("filler weight: " + fillerWeight);
         BMMeteor.LOG.info("recipeOutput size (stacks): " + oreWeight);
 
-        // drains extra 100k for
-        // ritual cost
+        // ritual cost, removes focus, findFocus handles fixing 0 stack
         focus.stackSize--;
         if (focus.stackSize <= 0) findFocus();
 
-        this.mMaxProgresstime = (int) (recipeTime * METEOR_SPEED_SCALING_FACTOR); // TODO: LAMBDAIZE THIS
-        this.lEUt = -(int) (512 * 15.0 / 16);
+        // sets max progress time, adjusting for speed factor
+
         this.mEfficiency = (10000 - (getIdealStatus() - getRepairStatus()) * 1000);
         this.mOutputItems = recipeOutput.toArray(new ItemStack[0]);
+
         return true;
+    }
+
+    /*
+     * TLDR: way too fast right now, is crazy wildly fast, should probably make inherent recipe time more granular
+     * overclocks have +50% throughput for 4x power cost, with 2x speed and 75% the drops per tier
+     * overclocks have +50% throughput for 4x power cost, with +50% speed and 100% the drops per tier
+     * overclocks have +50% throughput for 4x power cost, with +0% speed and 150% the drops per tier ** but 25%
+     */
+
+    // statted in a way to be somewhat worth overclocking for around 3 overclocks, then quickly falls off
+    private static double eff_calc(int tier) {
+        return 4 / (0.443 * tier + 4);
+    }
+
+    // tier overclocking heavily punishes catalyst and lp cost
+    private static double spd_calc(int tier) {
+        return 0.88 / (0.35 * tier * tier * tier + 0.88);
+    }
+
+    private static final int BASE_POWER = 512;
+
+    private double calculateOverclocks() {
+
+        int tiers = (int) GTUtility.log4(getMaxInputEu() / BASE_POWER);
+        this.lEUt = -512 * 15 / 16;
+        if (tiers <= 0) {
+            // this.mMaxProgresstime *= 1;
+            return 1;
+        }
+
+        // this.mMaxProgresstime *= 1;
+        this.lEUt = (long) (this.lEUt * GTUtility.powInt(4, tiers));
+        BMMeteor.LOG.info("" + this.mMaxProgresstime + " + " + spd_calc(tiers) + " + " + eff_calc(tiers));
+        this.mMaxProgresstime = (int) (this.mMaxProgresstime * spd_calc(tiers)) + 1;
+        return eff_calc(tiers);
     }
 
     @Override
     public void onPreTick(IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
         super.onPreTick(aBaseMetaTileEntity, aTick);
-        if (this.getProgresstime() % 3 == 1) {
+        if (this.getProgresstime() % 3 == 1 && checkRitual()) {
             summonAuxiliaryMeteors();
         }
     }
